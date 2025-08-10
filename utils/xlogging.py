@@ -2,6 +2,7 @@ import logging
 import sys
 import inspect
 import colorama
+from pathlib import Path
 from colorama import Fore, Back, Style
 
 colorama.init(autoreset=True)
@@ -36,6 +37,10 @@ class ColorFormatter(logging.Formatter):
 LOG_FORMAT = "%(asctime)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
+# Create logs directory if it doesn't exist
+logs_dir = Path("logs")
+logs_dir.mkdir(exist_ok=True)
+
 # Root logger initialization
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.DEBUG)
@@ -49,6 +54,13 @@ console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.DEBUG)
 console_handler.setFormatter(ColorFormatter(LOG_FORMAT, DATE_FORMAT))
 root_logger.addHandler(console_handler)
+
+# File handler for logging history (without colors)
+file_handler = logging.FileHandler(logs_dir / "xlogging_history.log", mode='a', encoding='utf-8')
+file_handler.setLevel(logging.DEBUG)
+file_formatter = logging.Formatter(LOG_FORMAT, DATE_FORMAT)
+file_handler.setFormatter(file_formatter)
+root_logger.addHandler(file_handler)
 
 def get_logger():
     """

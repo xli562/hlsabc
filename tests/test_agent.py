@@ -1,4 +1,3 @@
-import pytest
 from pathlib import Path
 
 from utils.agent import Agent
@@ -13,3 +12,6 @@ class TestAgent:
     def test_agent(self):
         """Test Agent initialization with a valid Gemini model"""
         logger.info('dummy')
+
+    def test_agent_fail(self):
+        assert 0
