@@ -35,3 +35,15 @@ def test_rmse():
     logger.debug(got)
 
     assert np.all(np.isclose(got, [0.33489057,0.5], rtol=1e-5))
+
+def test_utilization():
+    """ Tests parsing HLS report for utilization feedback """
+
+    perf_fb = PerfFB('./tests/resource')
+    exp = {'BRAM_18K': (0, 280),
+           'DSP48E': (0, 220),
+           'FF': (1161, 106400),
+           'LUT': (5214, 53200),
+           'URAM': (0, 0)}
+    got = perf_fb.utilization()
+    assert got == exp
