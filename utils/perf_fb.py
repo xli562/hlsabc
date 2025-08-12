@@ -189,3 +189,7 @@ class PerfFB:
         
         return latency_strs
 
+    def throughput(self):
+        """ Return angles count per second. """
+
+        return 1e9 / self._latency()
