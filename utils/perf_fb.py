@@ -28,12 +28,18 @@ class PerfFB:
         """
 
         self.input_dir = Path(input_dir) if input_dir else None
+        if self.input_dir:
+            self.read_hls_report()
         self.mode = mode
     
-    def set_hls_incl(self, hls_incl_path:str|Path):
+    def set_hls_incl_dir(self, hls_incl_path:str|Path):
         """ Provides path of HLS tool's include folder """
 
         self.hls_incl_path = Path(hls_incl_path)
+    
+    def read_hls_report(self):
+        hls_rpt_path = next(self.input_dir.glob('*.rpt'), None)
+        self.hls_rpt = hls_rpt_path.read_text(encoding='utf-8', errors='ignore')
 
     def _run_c(self, c_args_lst:list[list]) -> list[list[float]]:
         """ Runs `test.cpp`, returns tuple of returned comma-separated values.
@@ -120,14 +126,11 @@ class PerfFB:
         return vals
 
     def utilization(self) -> dict[str, tuple[int, int]]:
-        """ Parse HLS report text to extract utilization (Total/Available) per resource
+        """ Parses the HLS report for resource utilization.
         
         :return: Dictionary mapping resource name to utilization,
                 e.g., {'BRAM_18K':(0,280), 'LUT':(5214,53200), ...} """
         
-        hls_rpt_path = next(self.input_dir.glob('*.rpt'), None)
-        hls_rpt = hls_rpt_path.read_text(encoding='utf-8', errors='ignore')
-
         table_pat = re.compile(
             r'''
             ={24,}[^\S\r\n]*\n
@@ -139,16 +142,50 @@ class PerfFB:
             ''',
             re.IGNORECASE | re.DOTALL | re.VERBOSE,
         )
-        m = table_pat.search(hls_rpt)
-        if not m:
+        table_match = table_pat.search(self.hls_rpt)
+        if not table_match:
             raise ValueError('Utilization table not found')
+        table = table_match.group('table')
 
-        table = m.group('table')
-
-        # Assume 'Name' header is always present in table
         resources = self._find_line(table, 'Name')
         totals = self._find_line(table, 'Total')
         avails = self._find_line(table, 'Available')
 
         result = {res:(totals[i],avails[i]) for i, res in enumerate(resources)}
         return result
+
+    def _latency(self) -> list[float]:
+        """ Parse HLS report for latency. 
+        
+        :return: [min latency, max latency] in nanoseconds.
+        """
+        table_pat = re.compile(
+            r'''
+            \+\ Latency:\ \n
+            \ {4}\*\ Summary:\ \n
+            (?P<table>.*?)
+            (?=\n[ \t]*\n)
+            ''',
+            re.IGNORECASE | re.DOTALL | re.VERBOSE,
+        )
+        table_match = table_pat.search(self.hls_rpt)
+        if not table_match:
+            raise ValueError('Utilization table not found')
+
+        table = table_match.group('table')
+
+        rows = table.strip().split('\n')
+        num_cells = [x.strip() for x in rows[-2].strip().strip('|').split('|')]
+        latency_strs = num_cells[2:4]
+
+        suffixes = [('ps', 1e-3), ('ns', 1e0), ('us', 1e3),
+                    ('ms', 1e6), ('s', 1e9), ('ks', 1e12)]
+        for i, latency_str in enumerate(latency_strs):
+            for suffix, scale in suffixes:
+                if latency_str.endswith(suffix):
+                    latency_strs[i] = \
+                            float(latency_str.rstrip(suffix).rstrip()) * scale
+                    break
+        
+        return latency_strs
+

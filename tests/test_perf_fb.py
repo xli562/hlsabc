@@ -13,7 +13,7 @@ def test_run_c():
     """ Tests running cordic """
 
     perf_fb = PerfFB('./input')
-    perf_fb.set_hls_incl('/opt/xilinx/Vivado/2019.2/include')
+    perf_fb.set_hls_incl_dir('/opt/xilinx/Vivado/2019.2/include')
 
     got = perf_fb._run_c([[np.pi/3, 20]])
     logger.debug(got)
@@ -46,4 +46,11 @@ def test_utilization():
            'LUT': (5214, 53200),
            'URAM': (0, 0)}
     got = perf_fb.utilization()
+    assert got == exp
+
+def test_latency():
+    perf_fb = PerfFB('./tests/resource')
+
+    exp = [120.0, 120.0]
+    got = perf_fb._latency()
     assert got == exp
