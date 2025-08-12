@@ -97,34 +97,27 @@ class PerfFB:
         
         return self._rmse(gt, self._run_c)
 
-    def utilization(self) -> dict[str,tuple[int,int]]:
-        """ Parses the HLS report for resource utilization.
+    def _find_line(self, table:str, header:str) -> list[int]:
+        """ Finds a row with the specified header in a table in the HLS report.
         
-        :param hls_rpt_path: """
-
-        # table_pattern = re.compile(
-        #     r'(?m)'
-        #     r'^={24,}\s*\n'
-        #     r'^={2}\sUtilization\ Estimates\s*\n'
-        #     r'^={24,}\s*\n'
-        #     r'^\*\ Summary:\s*\n'
-        #     r'^\+(?:-+\+)+\s*\n'
-        #     r'(?P<body>(?:(?!\n\n).|\n)*?)'
-        #     r'^\+(?:-+\+)+\s*\n'
-        #     r'^\n'
-        # )
-
-        # total_line_pattern = re.compile(r'^|Total.')
-        # available_line_pattern = re.compile(r'^\|Available.')
-
-        # with open(self.input_dir / 'cordic_csynth.rpt', 'r') as f:
-        #     hls_report_str = f.read()
+        :param table: the data table
+        :param header: row header
         
-        # table_match = table_pattern.search(hls_report_str)
-        # total_match = total_line_pattern.search(table_match.group('body'))
-        # available_match = available_line_pattern.search(table_match.group('body'))
-        # return total_match.groups()
+        :return: list of values of the matched line, from left to right.
+        """
+        pat = rf'^\|[ \t]*{header}\b[^\n]*$'
+        line_match = re.search(pat, table, re.MULTILINE)
+        if not line_match:
+            raise ValueError(f"Row starting with '{header}' not found")
+        line = line_match.group(0)
 
+        # Assumes cells separated by '|'
+        cells = [c.strip() for c in line.strip().strip('|').split('|')]
+        vals_str = cells[1:]
+        vals = []
+        for cell in vals_str:
+            vals.append(int(cell) if cell.isdigit() else cell)
+        return vals
 
     def utilization(self) -> dict[str, tuple[int, int]]:
         """ Parse HLS report text to extract utilization (Total/Available) per resource
@@ -135,7 +128,6 @@ class PerfFB:
         hls_rpt_path = next(self.input_dir.glob('*.rpt'), None)
         hls_rpt = hls_rpt_path.read_text(encoding='utf-8', errors='ignore')
 
-        # Find utilization table
         table_pat = re.compile(
             r'''
             ={24,}[^\S\r\n]*\n
@@ -153,29 +145,10 @@ class PerfFB:
 
         table = m.group('table')
 
-        def find_line(prefix:str) -> str:
-            pat = rf'^\|[ \t]*{prefix}\b[^\n]*$'
-            line_match = re.search(pat, table, re.MULTILINE)
-            if not line_match:
-                raise ValueError(f"Row starting with '{prefix}' not found")
-            return line_match.group(0)
-
-        def parse_line(line: str) -> list[int]:
-            cells = [c.strip() for c in line.strip().strip('|').split('|')]
-            # Drop the row header
-            vals = cells[1:]
-            retlst = []
-            for cell in vals:
-                retlst.append(int(cell) if cell.isdigit() else cell)
-            return retlst
-
         # Assume 'Name' header is always present in table
-        header_line = find_line('Name')
-        total_line = find_line('Total')
-        avail_line = find_line('Available')
-        resources = parse_line(header_line)
-        totals = parse_line(total_line)
-        avails = parse_line(avail_line)
+        resources = self._find_line(table, 'Name')
+        totals = self._find_line(table, 'Total')
+        avails = self._find_line(table, 'Available')
 
         result = {res:(totals[i],avails[i]) for i, res in enumerate(resources)}
         return result
