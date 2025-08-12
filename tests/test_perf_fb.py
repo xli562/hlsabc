@@ -1,0 +1,37 @@
+import numpy as np
+from utils.perf_fb import PerfFB
+from utils.xlogging import get_logger
+
+
+logger = get_logger()
+
+def test_simple():
+    perf_fb = PerfFB()
+    assert perf_fb is not None
+
+def test_run_c():
+    """ Tests running cordic """
+
+    perf_fb = PerfFB('./input')
+    perf_fb.set_hls_incl('/opt/xilinx/Vivado/2019.2/include')
+
+    got = perf_fb._run_c([[np.pi/3, 20]])
+    logger.debug(got)
+    assert isinstance(got, list)
+    assert isinstance(got[0], list)
+    assert isinstance(got[0][0], float)
+
+def test_rmse():
+    """ Tests RMSE computation """
+
+    perf_fb = PerfFB()
+    def stub(a):
+        return [[1,2],[-3,4]]
+    
+    gt = {'1,2':'0.75,2',
+          '-1,-3':'-3.1,8'}
+    
+    got = perf_fb._rmse(gt, stub)
+    logger.debug(got)
+
+    assert np.all(np.isclose(got, [0.33489057,0.5], rtol=1e-5))
