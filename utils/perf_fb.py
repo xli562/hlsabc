@@ -4,6 +4,7 @@ import json
 import numpy as np
 from tempfile import TemporaryDirectory
 from pathlib import Path
+from utils.agent import Agent, GPRO, GFLASH, GLITE, GEMINI
 from utils.xlogging import get_logger
 
 
@@ -193,3 +194,23 @@ class PerfFB:
         """ Return angles count per second. """
 
         return 1e9 / self._latency()
+
+    def suggestion(self):
+        self.agent = Agent(GPRO)
+        self.agent.prompt = \
+'''
+You are an expert in high-level synthesis and hardware accelerator design. I am a professional software engineer, who is proficient with software skills and terminologies. However, I know little about hardware design. I wrote a software in C/C++ (see attached file), and wish to use high-level synthesis (HLS) synthesize a hardware accelerator for my software. I gave Vitis HLS my code as input, and got a synthesis report. 
+
+Considering 1) accuracy, 2) resource usage, and 3) throughput, tell me a) how I can optimize my code to achieve Pareto optimality, and b) what are my design tradeoffs.
+
+Style of your answer must be:
+
+- Readable, short, concise and to-the-point
+- Objective and unemotional, without words such as 'please', 'apologize', etc.
+- Explains hardware concepts if necessary. Remember that I am a professional software engineer, and that you are an expert in high-level synthesis and hardware accelerator design.
+'''
+        self.agent.add_files(['input/cordic.cpp',
+                              'input/cordic.h',
+                              'input/cordic_csynth.rpt'])
+        return self.agent.generate()
+

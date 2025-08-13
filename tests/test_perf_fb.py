@@ -54,3 +54,8 @@ def test_latency():
     exp = [120.0, 120.0]
     got = perf_fb._latency()
     assert got == exp
+
+def test_suggestion():
+    perf_fb = PerfFB('./tests/resource')
+
+    logger.debug(perf_fb.suggestion())
