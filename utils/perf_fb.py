@@ -1,5 +1,4 @@
 import sh
-import re
 import json
 import numpy as np
 import xml.etree.ElementTree as ET
@@ -30,8 +29,6 @@ class PerfFB:
         """
 
         self.input_dir = Path(input_dir) if input_dir else None
-        if self.input_dir:
-            self.read_hls_report()
         self.mode = mode
     
     def set_hls_incl_dir(self, hls_incl_path:str|Path):
@@ -39,10 +36,6 @@ class PerfFB:
 
         self.hls_incl_path = Path(hls_incl_path)
     
-    def read_hls_report(self):
-        hls_rpt_path = next(self.input_dir.glob('*.rpt'), None)
-        self.hls_rpt = hls_rpt_path.read_text(encoding='utf-8', errors='ignore')
-
     def _run_c(self, c_args_lst:list[list]) -> list[list[float]]:
         """ Runs `test.cpp`, returns tuple of returned comma-separated values.
         
@@ -105,56 +98,25 @@ class PerfFB:
         
         return self._rmse(gt, self._run_c)
 
-    def _find_line(self, table:str, header:str) -> list[int]:
-        """ Finds a row with the specified header in a table in the HLS report.
-        
-        :param table: the data table
-        :param header: row header
-        
-        :return: list of values of the matched line, from left to right.
-        """
-        pat = rf'^\|[ \t]*{header}\b[^\n]*$'
-        line_match = re.search(pat, table, re.MULTILINE)
-        if not line_match:
-            raise ValueError(f"Row starting with '{header}' not found")
-        line = line_match.group(0)
-
-        # Assumes cells separated by '|'
-        cells = [c.strip() for c in line.strip().strip('|').split('|')]
-        vals_str = cells[1:]
-        vals = []
-        for cell in vals_str:
-            vals.append(int(cell) if cell.isdigit() else cell)
-        return vals
-
     def utilization(self) -> dict[str, tuple[int, int]]:
         """ Parses the .xml HLS report for resource utilization.
         
         :return: Dictionary mapping resource name to utilization,
                 e.g., {'BRAM_18K':(0,280), 'LUT':(5214,53200), ...} """
         
-        table_pat = re.compile(
-            r'''
-            ={24,}[^\S\r\n]*\n
-            ==[^\n]*Utilization[^\n]*\n
-            ={24,}[^\S\r\n]*\n
-            \*[\ \t]*Summary:[^\n]*\n
-            (?P<table>.*?)
-            (?=\n[ \t]*\n)
-            ''',
-            re.IGNORECASE | re.DOTALL | re.VERBOSE,
-        )
-        table_match = table_pat.search(self.hls_rpt)
-        if not table_match:
-            raise ValueError('Utilization table not found')
-        table = table_match.group('table')
+        root = ET.parse(self.input_dir/'csynth.xml')
+        area = root.find('AreaEstimates')
+        usages = area.find('Resources')
+        avails = area.find('AvailableResources')
 
-        resources = self._find_line(table, 'Name')
-        totals = self._find_line(table, 'Total')
-        avails = self._find_line(table, 'Available')
-
-        result = {res:(totals[i],avails[i]) for i, res in enumerate(resources)}
-        return result
+        retdct = {}
+        for resource in usages:
+            resource_name = resource.tag
+            usage = int(resource.text)
+            avail = int(avails.find(resource_name).text)
+            retdct[resource_name] = (usage, avail)
+        
+        return retdct
 
     def throughput(self):
         """ Return throughput """

@@ -40,12 +40,13 @@ def test_utilization():
     """ Tests parsing HLS report for utilization feedback """
 
     perf_fb = PerfFB('./tests/resource')
-    exp = {'BRAM_18K': (0, 280),
-           'DSP48E': (0, 220),
-           'FF': (1161, 106400),
-           'LUT': (5214, 53200),
-           'URAM': (0, 0)}
+    exp = {'BRAM_18K':(65,280),
+           'DSP48E':(2,220),
+           'FF':(17658,106400),
+           'LUT':(52125,53200),
+           'URAM':(0,0)}
     got = perf_fb.utilization()
+    logger.debug(got)
     assert got == exp
 
 def test_latency():
