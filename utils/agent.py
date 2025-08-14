@@ -1,6 +1,6 @@
 from pathlib import Path
-from google import genai
-from google.genai import types
+import requests
+import json
 
 from utils.xlogging import get_logger
 
@@ -8,20 +8,18 @@ from utils.xlogging import get_logger
 logger = get_logger()
 
 
-GPRO = 'gemini-2.5-pro'
-GFLASH = 'gemini-2.5-flash'
-GLITE = 'gemini-2.5-flash-lite'
-GEMINI = {GPRO, GFLASH, GLITE}
+GPRO = 'google/gemini-2.5-pro'
+GFLASH = 'google/gemini-2.5-flash'
+GLITE = 'google/gemini-2.5-flash-lite'
 
 class Agent:
     """ LLM agent """
 
     def __init__(self, model:str):
         self.model = model
-        if model in GEMINI:
-            self.client = genai.Client()
         self.files: dict[str, str] = {}
-        self.prompt = ''
+        self.system_prompt = ''
+        self.user_prompt = ''
 
     def add_files(self, file_paths:list[str|Path]) -> None:
         """ Appends text-encoded files to Agent.files
@@ -46,45 +44,48 @@ class Agent:
 
         :return: (str) response from LLM
         """
-        if self.model in GEMINI:
-            return self._gemini_generate()
-    
-    def _gemini_generate(self, thinking_budget=-1, include_thoughts=False):
-        """ Generates string with Gemini
-        
-        :return: (str) response from Gemini
-        """
+        with open(Path.home() / 'openrouterkey', 'r') as f:
+            api_key = f.readline().strip()
+
         # Prompt construction
-        prompt = self.prompt
+        user_prompt = self.user_prompt
 
         if self.files:
-            prompt += '\n\nHere are the attached file(s):\n\n'
+            user_prompt += '\n\nHere are the attached file(s):\n\n'
             for name, content in self.files.items():
-                prompt += f'## {name}\n'
-                prompt += f'{content}\n\n'
+                user_prompt += f'## {name}\n'
+                user_prompt += f'{content}\n\n'
         
         # Generate response
-        response = self.client.models.generate_content(
-            model=self.model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(
-                    thinking_budget=thinking_budget,
-                    include_thoughts=include_thoughts
-                )
-            )
+        response = requests.post(
+            url='https://openrouter.ai/api/v1/chat/completions',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+            },
+            data=json.dumps({
+                'model':self.model,
+                'reasoning':{
+                    # 'max_tokens':2000,  # Specify thinking budget
+                    'enabled':True, # Automatically allocate thinking budget
+                    'exclude':True  # Exclude thinking tokens from response
+                },
+                'messages':[{
+                    'role':'system',
+                    'content':self.system_prompt
+                },{
+                    'role':'user',
+                    'content':user_prompt
+                }]
+            })
         )
 
         # Parse response
         retstr = ''
-        for part in response.candidates[0].content.parts:
-            if not part.text:
-                continue
-            if part.thought:
-                retstr += 'Thought summary:'
-                retstr += part.text + '\n'
-            else:
-                retstr += 'Answer:'
-                retstr += part.text + '\n'
-        
+        try:
+            retstr = response.json()['choices'][0]['message']['content']
+        except:
+            pass
+        if not retstr:
+            logger.info(f'Failed to parse this LLM response:')
+            logger.info(json.dumps(response.json(), indent=4))
         return retstr

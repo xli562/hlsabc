@@ -197,7 +197,7 @@ class PerfFB:
 
     def suggestion(self):
         self.agent = Agent(GPRO)
-        self.agent.prompt = \
+        self.agent.user_prompt = \
 '''
 You are an expert in high-level synthesis and hardware accelerator design. I am a professional software engineer, who is proficient with software skills and terminologies. However, I know little about hardware design. I wrote a software in C/C++ (see attached file), and wish to use high-level synthesis (HLS) synthesize a hardware accelerator for my software. I gave Vitis HLS my code as input, and got a synthesis report. 
 
