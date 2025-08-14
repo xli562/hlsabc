@@ -2,9 +2,10 @@ import sh
 import re
 import json
 import numpy as np
+import xml.etree.ElementTree as ET
 from tempfile import TemporaryDirectory
 from pathlib import Path
-from utils.agent import Agent, GPRO, GFLASH, GLITE, GEMINI
+from utils.agent import Agent, GPRO, GFLASH, GLITE
 from utils.xlogging import get_logger
 
 
@@ -127,7 +128,7 @@ class PerfFB:
         return vals
 
     def utilization(self) -> dict[str, tuple[int, int]]:
-        """ Parses the HLS report for resource utilization.
+        """ Parses the .xml HLS report for resource utilization.
         
         :return: Dictionary mapping resource name to utilization,
                 e.g., {'BRAM_18K':(0,280), 'LUT':(5214,53200), ...} """
@@ -155,43 +156,8 @@ class PerfFB:
         result = {res:(totals[i],avails[i]) for i, res in enumerate(resources)}
         return result
 
-    def _latency(self) -> list[float]:
-        """ Parse HLS report for latency. 
-        
-        :return: [min latency, max latency] in nanoseconds.
-        """
-        table_pat = re.compile(
-            r'''
-            \+\ Latency:\ \n
-            \ {4}\*\ Summary:\ \n
-            (?P<table>.*?)
-            (?=\n[ \t]*\n)
-            ''',
-            re.IGNORECASE | re.DOTALL | re.VERBOSE,
-        )
-        table_match = table_pat.search(self.hls_rpt)
-        if not table_match:
-            raise ValueError('Utilization table not found')
-
-        table = table_match.group('table')
-
-        rows = table.strip().split('\n')
-        num_cells = [x.strip() for x in rows[-2].strip().strip('|').split('|')]
-        latency_strs = num_cells[2:4]
-
-        suffixes = [('ps', 1e-3), ('ns', 1e0), ('us', 1e3),
-                    ('ms', 1e6), ('s', 1e9), ('ks', 1e12)]
-        for i, latency_str in enumerate(latency_strs):
-            for suffix, scale in suffixes:
-                if latency_str.endswith(suffix):
-                    latency_strs[i] = \
-                            float(latency_str.rstrip(suffix).rstrip()) * scale
-                    break
-        
-        return latency_strs
-
     def throughput(self):
-        """ Return angles count per second. """
+        """ Return throughput """
 
         return 1e9 / self._latency()
 
@@ -201,7 +167,7 @@ class PerfFB:
 '''
 You are an expert in high-level synthesis and hardware accelerator design. I am a professional software engineer, who is proficient with software skills and terminologies. However, I know little about hardware design. I wrote a software in C/C++ (see attached file), and wish to use high-level synthesis (HLS) synthesize a hardware accelerator for my software. I gave Vitis HLS my code as input, and got a synthesis report. 
 
-Considering 1) accuracy, 2) resource usage, and 3) throughput, tell me a) how I can optimize my code to achieve Pareto optimality, and b) what are my design tradeoffs.
+Considering 1) accuracy, 2) resource usage, and 3) throughput, tell me a) what is the current throughput, b) how I can optimize my code to achieve Pareto optimality, and c) what are my design tradeoffs.
 
 Style of your answer must be:
 
@@ -209,8 +175,7 @@ Style of your answer must be:
 - Objective and unemotional, without words such as 'please', 'apologize', etc.
 - Explains hardware concepts if necessary. Remember that I am a professional software engineer, and that you are an expert in high-level synthesis and hardware accelerator design.
 '''
-        self.agent.add_files(['input/cordic.cpp',
-                              'input/cordic.h',
-                              'input/cordic_csynth.rpt'])
+        self.agent.add_files([self.input_dir/'bnn.prj'/'solution1'/'syn'/'report',
+                              self.input_dir/'bnn_source'])
         return self.agent.generate()
 

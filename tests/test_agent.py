@@ -22,9 +22,17 @@ def test_generate_simple():
     assert len(got) > 1
 
 def test_add_file():
-    """ Gives CORDIC report, expects 'cordic' in response. """
+    """ Adds test folder to Agent, expects correct treatment of nested dirs """
 
     agent = Agent(GLITE)
-    agent.add_files(['tests/resource/cordic_csynth.rpt'])
-    agent.user_prompt = 'Which algorithm is this HLS report for?'
-    assert 'cordic' in agent.generate().lower()
+    test_add_file_root = Path('tests/resource/test_add_file/')
+    agent.add_files([test_add_file_root/'1'/'1.1',
+                    test_add_file_root/'2'/'2.1',
+                    test_add_file_root/'2',
+                    test_add_file_root/'2'/'2.1.a'])
+    got = agent.files
+    exp = {'tests/resource/test_add_file/1/1.1/1.1.1.a,':'Contents of 1.1.1.a', 
+           'tests/resource/test_add_file/1/1.1/1.1.2.a':'Contents of 1.1.2.a', 
+           'tests/resource/test_add_file/2/2.1/2.1.1/2.1.1.1.a':'Contents of 2.1.1.1.a', 
+           'tests/resource/test_add_file/2/2.1.a':'Contents of 2.1.a'}
+    assert got == exp

@@ -4,6 +4,7 @@
 
 # File input
 input
+tests/resource
 
 # Scratch folder
 scratch

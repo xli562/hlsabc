@@ -21,23 +21,37 @@ class Agent:
         self.system_prompt = ''
         self.user_prompt = ''
 
-    def add_files(self, file_paths:list[str|Path]) -> None:
+    def add_files(self, paths:list[str|Path]) -> None:
         """ Appends text-encoded files to Agent.files
         
-        :param file_path: list of paths to files. Files added in list's order.
+        :param paths: list of paths to files or dirs. Paths are
+                processed in list's order. Directories are expanded recursively.
         """
-        for file_path in file_paths:
-            file_path = Path(file_path)
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    file_contents = f.read()
-                    self.files[file_path.name] = file_contents
-            except FileNotFoundError:
-                logger.warning(f"Input file not found: {file_path}")
-            except UnicodeDecodeError:
-                logger.warning(f"Unable to decode input file as text: {file_path}")
-            except Exception as e:
-                logger.warning(f"Error reading input file {file_path}: {e}")
+
+        def build_key(root:Path, path:Path):
+            if root.is_file():
+                retstr = str(path)
+            else:
+                retstr = str(root / path.relative_to(root))
+            return retstr
+
+        def iter_files(path:Path):
+            if path.is_file():
+                yield build_key(path, path), path
+            elif path.is_dir():
+                for subpath in path.rglob('*'):
+                    if subpath.is_file():
+                        yield build_key(path, subpath), subpath
+            else:
+                logger.warning(f'Path is neither dir nor file: {path}')
+        
+        for path in paths:
+            path = Path(path)
+            for key_name, file_path in iter_files(path):
+                try:
+                    self.files[key_name] = file_path.read_text(encoding='utf-8')
+                except Exception as e:
+                    logger.warning(f'Error reading file {file_path}: {e}')
 
     def generate(self):
         """ Run the LLM
@@ -65,7 +79,7 @@ class Agent:
             data=json.dumps({
                 'model':self.model,
                 'reasoning':{
-                    # 'max_tokens':2000,  # Specify thinking budget
+                    # 'max_tokens':2000,  # Explicitly set thinking budget
                     'enabled':True, # Automatically allocate thinking budget
                     'exclude':True  # Exclude thinking tokens from response
                 },
