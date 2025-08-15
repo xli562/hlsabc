@@ -15,8 +15,17 @@ GLITE = 'google/gemini-2.5-flash-lite'
 class Agent:
     """ LLM agent """
 
-    def __init__(self, model:str):
-        self.model = model
+    def __init__(self, model:str, tok_budget=100_000):
+        """ Initializes the agent.
+        
+        :param model: name of model, eg 'google/gemini-2.5-flash'
+        :param tok_budget: (Optional) max allowable tokens
+                used by a class instance. Logs warnings on high usage, disables
+                further prompting if usage exceeds budget.
+        """
+        self._model = model
+        self._tok_budget = tok_budget
+        self._tok_used = 0
         self.files: dict[str, str] = {}
         self.system_prompt = ''
         self.user_prompt = ''
@@ -53,11 +62,45 @@ class Agent:
                 except Exception as e:
                     logger.warning(f'Error reading file {file_path}: {e}')
 
+    def accumulate_tok_count(self, delta_tok_count:int):
+        """ Increments self._tok_used by the input.
+        
+        :param delta_tok_count: the amount to increment for.
+        """
+        log_tiers = [(0.10, 'INFO'),
+                     (0.20, 'INFO'),
+                     (0.30, 'INFO'),
+                     (0.40, 'INFO'),
+                     (0.50, 'INFO'),
+                     (0.60, 'INFO'),
+                     (0.70, 'INFO'),
+                     (0.75, 'WARN'),
+                     (0.85, 'WARN'),
+                     (0.90, 'WARN'),
+                     (0.95, 'WARN'),
+                     (0.99, 'WARN')]
+        log_tiers.reverse()
+        self._tok_used += delta_tok_count
+        for level, log_level in log_tiers:
+            if self._tok_used > self._tok_budget * level:
+                tier_percentage = int(level * 100)
+                curr_percentage = self._tok_used / self._tok_budget * 100
+                log_msg = f'Exceeded {tier_percentage} % token budget, currently {curr_percentage} %'
+                if log_level == 'INFO':
+                    logger.info(log_msg)
+                elif log_level == 'WARN':
+                    logger.warning(log_msg)
+                break
+                
     def generate(self):
         """ Run the LLM
 
-        :return: (str) response from LLM
+        :return: (str) response from LLM. Returns '' if token budget exceeded.
         """
+        if self._tok_used + 20 >= self._tok_budget:
+            logger.warning(f'Exceeded token budget of {self._tok_budget}')
+            return ''
+
         with open(Path.home() / 'openrouterkey', 'r') as f:
             api_key = f.readline().strip()
 
@@ -77,7 +120,7 @@ class Agent:
                 'Authorization': f'Bearer {api_key}',
             },
             data=json.dumps({
-                'model':self.model,
+                'model':self._model,
                 'reasoning':{
                     # 'max_tokens':2000,  # Explicitly set thinking budget
                     'enabled':True, # Automatically allocate thinking budget
@@ -97,9 +140,11 @@ class Agent:
         retstr = ''
         try:
             retstr = response.json()['choices'][0]['message']['content']
-        except:
-            pass
-        if not retstr:
+            tok_count = response.json()['usage']['total_tokens']
+            self.accumulate_tok_count(tok_count)
+        except Exception as e:
             logger.info(f'Failed to parse this LLM response:')
             logger.info(json.dumps(response.json(), indent=4))
+            logger.info('Additional error message:')
+            logger.info(e)
         return retstr

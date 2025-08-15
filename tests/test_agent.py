@@ -36,3 +36,13 @@ def test_add_file():
            'tests/resource/test_add_file/2/2.1/2.1.1/2.1.1.1.a':'Contents of 2.1.1.1.a', 
            'tests/resource/test_add_file/2/2.1.a':'Contents of 2.1.a'}
     assert got == exp
+
+def test_tok_budget():
+    """ Sets a low token budget, test if generate returns '' """
+
+    agent = Agent(GLITE, tok_budget=40)
+    agent.user_prompt = "How many letter r's are in the word 'strawberry'?"
+    got = agent.generate()
+    logger.debug(got)
+    got = agent.generate()
+    logger.debug(got)
