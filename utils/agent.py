@@ -1,12 +1,14 @@
 from pathlib import Path
 import requests
 import json
+import os
 
+from dotenv import load_dotenv
 from utils.xlogging import get_logger
 
 
 logger = get_logger()
-
+load_dotenv()
 
 GPRO = 'google/gemini-2.5-pro'
 GFLASH = 'google/gemini-2.5-flash'
@@ -91,7 +93,26 @@ class Agent:
                 elif log_level == 'WARN':
                     logger.warning(log_msg)
                 break
-                
+    
+    def get_prompt_with_files(self):
+        """ Returns the user prompt with self.files appended.
+
+        :return: the user prompt with self.files appended. Will not append 
+                if 'Here are the attached file(s):' is already in 
+                self.user_prompt.
+        """
+        user_prompt = self.user_prompt
+        here_str = 'Here are the attached file(s):'
+        if self.files and here_str not in self.user_prompt.splitlines():
+            user_prompt += '\n\nHere are the attached file(s):\n\n'
+            for name, content in self.files.items():
+                user_prompt += f'## {name}\n'
+                user_prompt += f'{content}\n\n'
+            logger.debug(f'Appended {len(self.files)} file(s) to prompt.')
+        else:
+            logger.debug('No new files are attached to prompt')
+        return user_prompt
+
     def generate(self):
         """ Run the LLM
 
@@ -101,17 +122,9 @@ class Agent:
             logger.warning(f'Exceeded token budget of {self._tok_budget}')
             return ''
 
-        with open(Path.home() / 'openrouterkey', 'r') as f:
-            api_key = f.readline().strip()
-
-        # Prompt construction
-        user_prompt = self.user_prompt
-
-        if self.files:
-            user_prompt += '\n\nHere are the attached file(s):\n\n'
-            for name, content in self.files.items():
-                user_prompt += f'## {name}\n'
-                user_prompt += f'{content}\n\n'
+        api_key = os.getenv('OPENROUTER_API_KEY')
+        # Append files
+        user_prompt = self.get_prompt_with_files()
         
         # Generate response
         response = requests.post(
@@ -122,7 +135,7 @@ class Agent:
             data=json.dumps({
                 'model':self._model,
                 'reasoning':{
-                    # 'max_tokens':2000,  # Explicitly set thinking budget
+                    # 'max_tokens':100000,  # Explicitly set thinking budget
                     'enabled':True, # Automatically allocate thinking budget
                     'exclude':True  # Exclude thinking tokens from response
                 },
@@ -139,12 +152,16 @@ class Agent:
         # Parse response
         retstr = ''
         try:
-            retstr = response.json()['choices'][0]['message']['content']
+            retstr:str = response.json()['choices'][0]['message']['content']
             tok_count = response.json()['usage']['total_tokens']
             self.accumulate_tok_count(tok_count)
         except Exception as e:
-            logger.info(f'Failed to parse this LLM response:')
-            logger.info(json.dumps(response.json(), indent=4))
-            logger.info('Additional error message:')
-            logger.info(e)
+            logger.error(f'Failed to parse this LLM response:')
+            logger.error(json.dumps(response.json(), indent=4))
+            logger.error('Additional error message:')
+            logger.error(e)
+        if not retstr:
+            logger.error('Failed to parse this LLM response:')
+            logger.error(json.dumps(response.json(), indent=4))
+
         return retstr

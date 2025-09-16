@@ -59,4 +59,4 @@ def test_latency():
 def test_suggestion():
     perf_fb = PerfFB('./tests/resource')
 
-    logger.debug(perf_fb.suggestion())
+    logger.debug(f'\n{perf_fb.suggestion()}')

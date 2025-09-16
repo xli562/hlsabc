@@ -5,10 +5,8 @@ import xml.etree.ElementTree as ET
 from tempfile import TemporaryDirectory
 from pathlib import Path
 from utils.agent import Agent, GPRO, GFLASH, GLITE
-from utils.xlogging import get_logger
+from loguru import logger
 
-
-logger = get_logger()
 
 class PerfFB:
     """ Gives performance feedback based on ground truth and HLS report. """
@@ -118,30 +116,78 @@ class PerfFB:
         
         return retdct
 
-    def suggestion(self):
+    def suggestion(self, clk_period:str=None):
         """ Provides detailed performance feedback and
-        C/C++ source improvement suggestions using LLM. """
+        C/C++ source improvement suggestions using LLM.
+        
+        :param clk_period: (Optional) specifies clock 
+                period, eg '10ns' or '400 ns' """
 
         self.agent = Agent(GPRO)
+
+        if clk_period is None:
+            clk_period = 'as specified by the target clock period in the HLS report'
+
         self.agent.system_prompt = \
 '''
 Style of your answer must be:
 
-- Readable, short, concise and to-the-point
+- Summarize the thought process to be readable, short, concise and to-the-point. Do not include *any* more text than absolutely necessary.
 - Objective and unemotional, without words such as 'please', 'apologize', etc.
 - Explains hardware concepts if necessary. Remember that I am a professional software engineer, and that you are an expert in high-level synthesis and hardware accelerator design.
 '''
         self.agent.user_prompt = \
-'''
-You are an expert in high-level synthesis and hardware accelerator design. I am a professional software engineer, who is proficient with software skills and terminologies. However, I know little about hardware design. I wrote a software in C/C++ (see attached file), and wish to use high-level synthesis (HLS) synthesize a hardware accelerator for my software. I gave Vitis HLS my code as input, and got a synthesis report. 
+f'''
+## Role introduction
 
-Considering 1) accuracy, 2) resource usage, and 3) throughput, tell me a) what is the current throughput, b) how I can optimize my code to achieve Pareto optimality, and c) what are my design tradeoffs.
+You are an expert in high-level synthesis and hardware accelerator design. I am a professional software engineer, who is proficient with software skills and terminologies. However, I know little about hardware design.
+
+A C/C++ software (see attached files) is fed into Vitis HLS, and csynth report(s) are generated (see attached), as well as code for a hardware accelerator for the software. Give estimations of high-level metrics of this accelerator.
+
+## Methodology
+
+- Throughput = 1 / Latency
+- If the csynth report gives multiple latency values, it is because of branches in the control flow. Find the branching points, carefully examine them, considering the design's input and outputs, to give an estimate of the proportion of branch hits. Use this ratio to give a weighted-sum of the multiple latency values from the csynth report. Only fall back to uniform-weight averaging (or "Average-case Latency" provided by Vitis) as a last resort.
+- For dataflow-optimized designs, if the intermediate values are vectors, the FIFOs between dataflow stages are implemented as dual-port BRAMs. Csynth reports over-optimistically estimate the dataflow latency as the max latency of all components. In reality, the dataflow pipeline is implemented as a PIPO that causes stalls. For large vectors, the dataflow optimization has trivial effects. For scalars, csynth gives the correct latency estimation for dataflow pipelines.
+- **Make sure maths and unit conversion are done correctly.**
+- The clock period is {clk_period}.
+
+## Job description
+
+Estimate the throughput for the synthesized hardware accelerator.
 '''
-        self.agent.user_prompt = \
-'''
-For the synthesized hardware accelerator, what is the most suitable metric to represent its **throughput**? Give a single number for this throughput metric. This must be a well-informed estimate of an intermediate value between minimum and maximum throughput.
-'''
-        self.agent.add_files([self.input_dir/'bnn.prj'/'solution1'/'syn'/'report',
-                              self.input_dir/'bnn_source'])
+
+#         self.agent.user_prompt = \
+# r'''
+# For this accelerator design in MLIR, answer the following questions.
+
+# 1. Identify *one* core operation in the core kernel. For example, addition or MAC. MAC can count as a core operation.
+# 2. How many times is this core operation performed?
+# 3. How many bytes of *external* memory access are there?
+
+# Hint: pay attention to the control flow, indicated by affine.for, affine.if, etc.
+
+# Count explicitly, without any "educated guesses".
+
+# Note size of the variables processed. For example, int32 is 32 bits, or 32/8=4 bytes.
+
+# Exhaustive list of data movement commands:
+# - affine.load
+# - affine.store
+# - memref.load
+# - memref.store
+
+# Note that some data movement are between on-chip buffers, these do not count as external memory access. Only count the ones that move data between the FPGA and the external memory.
+
+# For example, in example.mlir:
+
+# 1. The core operation is `arith.addi`
+# 2. The core operation is performed $8 \times 8 \times 3 \times 3 \times 1 = 576$ times.
+# 3. External memory access happens when the program performs any of the data movement commands on A or B.  That is $8 \times 8 \times (3 \times 3 \times (32 \div 8) + (32 \div 8)) = \pu{2560 bytes}$
+# '''
+        self.agent.user_prompt = 'What is the benchmark with the most complicated memory access pattern and data dependency?'
+        # self.agent.add_files([self.input_dir/'conv_rpt'])
+        self.agent.add_files(['/home/xl2296/allo/examples/polybench'])
+
         return self.agent.generate()
 
