@@ -33,7 +33,8 @@ class Agent:
         self.user_prompt = ''
 
     def add_files(self, paths:list[str|Path]) -> None:
-        """ Appends text-encoded files to Agent.files
+        """ Appends text-encoded files to Agent.files. This is the recommended
+        way to include files in the prompt.
         
         :param paths: list of paths to files or dirs. Paths are
                 processed in list's order. Directories are expanded recursively.
