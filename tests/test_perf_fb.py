@@ -1,9 +1,7 @@
 import numpy as np
 from utils.perf_fb import PerfFB
-from utils.xlogging import get_logger
+from utils.xlogging import logger
 
-
-logger = get_logger()
 
 def test_simple():
     perf_fb = PerfFB()

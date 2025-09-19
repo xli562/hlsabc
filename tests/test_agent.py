@@ -3,10 +3,8 @@ import sys
 
 from utils.agent import Agent
 from utils.agent import GPRO, GFLASH, GLITE
-from utils.xlogging import get_logger
+from utils.xlogging import logger
 
-
-logger = get_logger()
 
 def test_simple():
     """ Makes sure Agent can initialize successfully. """

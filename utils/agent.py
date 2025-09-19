@@ -1,18 +1,21 @@
 from pathlib import Path
+from google import genai
+from google.genai import types
 import requests
 import json
 import os
 
 from dotenv import load_dotenv
-from utils.xlogging import get_logger
+from utils.xlogging import logger
 
 
-logger = get_logger()
 load_dotenv()
 
-GPRO = 'google/gemini-2.5-pro'
-GFLASH = 'google/gemini-2.5-flash'
-GLITE = 'google/gemini-2.5-flash-lite'
+USE_GEMINI = True
+
+GPRO = 'gemini-2.5-pro' if USE_GEMINI else 'google/gemini-2.5-pro'
+GFLASH = 'gemini-2.5-flash' if USE_GEMINI else 'google/gemini-2.5-flash'
+GLITE = 'gemini-2.5-flash-lite' if USE_GEMINI else 'google/gemini-2.5-flash-lite'
 
 class Agent:
     """ LLM agent """
@@ -26,6 +29,8 @@ class Agent:
                 further prompting if usage exceeds budget.
         """
         self._model = model
+        if USE_GEMINI:
+            self.client = genai.Client()
         self._tok_budget = tok_budget
         self._tok_used = 0
         self.files: dict[str, str] = {}
@@ -122,47 +127,72 @@ class Agent:
         if self._tok_used + 20 >= self._tok_budget:
             logger.warning(f'Exceeded token budget of {self._tok_budget}')
             return ''
-
-        api_key = os.getenv('OPENROUTER_API_KEY')
+        
         # Append files
         user_prompt = self.get_prompt_with_files()
-        
-        # Generate response
-        response = requests.post(
-            url='https://openrouter.ai/api/v1/chat/completions',
-            headers={
-                'Authorization': f'Bearer {api_key}',
-            },
-            data=json.dumps({
-                'model':self._model,
-                'reasoning':{
-                    # 'max_tokens':100000,  # Explicitly set thinking budget
-                    'enabled':True, # Automatically allocate thinking budget
-                    'exclude':True  # Exclude thinking tokens from response
-                },
-                'messages':[{
-                    'role':'system',
-                    'content':self.system_prompt
-                },{
-                    'role':'user',
-                    'content':user_prompt
-                }]
-            })
-        )
 
-        # Parse response
-        retstr = ''
-        try:
-            retstr:str = response.json()['choices'][0]['message']['content']
-            tok_count = response.json()['usage']['total_tokens']
-            self.accumulate_tok_count(tok_count)
-        except Exception as e:
-            logger.error(f'Failed to parse this LLM response:')
-            logger.error(json.dumps(response.json(), indent=4))
-            logger.error('Additional error message:')
-            logger.error(e)
-        if not retstr:
-            logger.error('Failed to parse this LLM response:')
-            logger.error(json.dumps(response.json(), indent=4))
+        if USE_GEMINI:
+            api_key = os.getenv('GEMINI_API_KEY')
+            response = self.client.models.generate_content(
+                model=self._model,
+                contents=f'{self.system_prompt}\n\n\n{user_prompt}',
+                config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(
+                        thinking_budget=-1,
+                        include_thoughts=False
+                    )
+                )
+            )
+            retstr = ''
+            for part in response.candidates[0].content.parts:
+                if not part.text:
+                    continue
+                if part.thought:
+                    retstr += 'Thought summary:\n'
+                    retstr += '----------------\n'
+                    retstr += f'{part.text}\n'
+                    retstr += '----------------\n'
+                else:
+                    retstr += f'{part.text}\n'
+        else:
+            api_key = os.getenv('OPENROUTER_API_KEY')
+        
+            # Generate response
+            response = requests.post(
+                url='https://openrouter.ai/api/v1/chat/completions',
+                headers={
+                    'Authorization': f'Bearer {api_key}',
+                },
+                data=json.dumps({
+                    'model':self._model,
+                    'reasoning':{
+                        # 'max_tokens':100000,  # Explicitly set thinking budget
+                        'enabled':True, # Automatically allocate thinking budget
+                        'exclude':True  # Exclude thinking tokens from response
+                    },
+                    'messages':[{
+                        'role':'system',
+                        'content':self.system_prompt
+                    },{
+                        'role':'user',
+                        'content':user_prompt
+                    }]
+                })
+            )
+
+            # Parse response
+            retstr = ''
+            try:
+                retstr:str = response.json()['choices'][0]['message']['content']
+                tok_count = response.json()['usage']['total_tokens']
+                self.accumulate_tok_count(tok_count)
+            except Exception as e:
+                logger.error(f'Failed to parse this LLM response:')
+                logger.error(json.dumps(response.json(), indent=4))
+                logger.error('Additional error message:')
+                logger.error(e)
+            if not retstr:
+                logger.error('Failed to parse this LLM response:')
+                logger.error(json.dumps(response.json(), indent=4))
 
         return retstr

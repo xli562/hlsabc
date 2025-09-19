@@ -12,6 +12,9 @@ scratch
 # Logs
 logs
 
+# Csynth files
+vivado
+
 # lab4 gitignores
 
 *.tgz

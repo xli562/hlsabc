@@ -1,14 +1,14 @@
 from pathlib import Path
 import shutil
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
 
 from allo.customize import Schedule
 from utils.agent import Agent, GPRO, GFLASH, GLITE
-from utils.xlogging import get_logger
+from utils.xlogging import logger
 
-
-logger = get_logger()
 
 class Roofline:
     """ Gets roofline coordinates of Allo Schedule """
@@ -54,9 +54,7 @@ You are a tool that extracts machine-parsable values from a raw text. You *must*
                 output_convert.
         """
         self.eval_model.user_prompt = eval_prompt
-        logger.debug('Running eval_model...')
         raw_output = self.eval_model.generate()
-        logger.debug('eval_model finished.')
         extract_prompt += \
             f'\n\nHere is the raw text:\n\n{raw_output}'
 
@@ -196,7 +194,8 @@ The number of bytes of external memory access is needed. The total external memo
         May take ~1-5 minutes """
 
         try:
-            prj_name = f'{dt.now().strftime('%m_%d_%H_%M_%S')}.prj'
+            tid = threading.get_ident()
+            prj_name = f'vivado/{dt.now().strftime('%m_%d_%H_%M_%S_%f')}_{tid}.prj'
             mod = self.s.build(target='vivado_hls', mode='csyn', project=prj_name)
             logger.debug('Csynth starts.')
             mod()
@@ -330,7 +329,8 @@ The latency in cycles per kernel is needed. In this specific case, the latency (
                                   lambda x: float(x))
     
     def get_latency_per_kernel(self, attach_paths:list[str|Path], 
-                               latency_range:tuple[int], tries=3):
+                               latency_range:tuple[int], tries=3,
+                               rtol=1e-2):
         """ Gets the estimated latency per kernel, re-estimates if not in
         (min_latency, max_latency) as in the csynth report.
         
@@ -340,6 +340,8 @@ The latency in cycles per kernel is needed. In this specific case, the latency (
         :param latency_range: range of (min_latency, max_latency) that
                 the estimated latency should fall in
         :param tries: (optional) number of attempts to re-estimate.
+        :param rtol: (optional) does not re-estimate if estimated latency
+                is between [`intv_range[0]*(1-rtol)`, `intv_range[1]*(1+rtol)`]
         """
         assert (len(latency_range) == 2 and
                 latency_range[0] <= latency_range[1]), \
@@ -350,7 +352,7 @@ The latency in cycles per kernel is needed. In this specific case, the latency (
         for _ in range(tries):
             estm_lat, raw_ans = self._get_once_latency_per_kernel(attach_paths,
                                                                   additional_prompt)
-            if min_intv <= estm_lat <= max_intv:
+            if min_intv*(1-rtol) <= estm_lat <= max_intv*(1+rtol):
                 return estm_lat
             else:
                 debug_warning_msg = f'Estimated latency ({estm_lat} [cycles per kernel]) '
@@ -369,7 +371,7 @@ Are you sure? The HLS report has minimum interval {min_intv} and maximum interva
 '''
         logger.warning(debug_warning_msg)
         return estm_lat
-        
+
     def get_coords(self, tries=3):
         """ Gets the coordinates of self.s, for roofline modelling.
         
@@ -378,13 +380,10 @@ Are you sure? The HLS report has minimum interval {min_intv} and maximum interva
         :return: coordinates for roofline modelling. (Throughput, OI) =
                 (opcount_per_second, opcount_per_byte_external_mem_access).
         """
-        try:
+        def wrap_get_latency_per_kernel():
             # Run csynth if and only if no csynth dirs exist
             if not Path(self.prj_name).is_dir():
                 self._run_csynth()
-
-            opcount_per_kernel = self.get_opcount_per_kernel()
-            bytes_per_kernel = self.get_bytes_per_kernel()
             prj_path = Path(self.prj_name)
             prj_files_paths = self._get_hls_sources(prj_path)
             prj_files_paths.extend(self._get_hls_rpts(prj_path))
@@ -392,6 +391,16 @@ Are you sure? The HLS report has minimum interval {min_intv} and maximum interva
             seconds_per_kernel = self.get_latency_per_kernel(prj_files_paths,
                                                              latency_range,
                                                              tries=tries)
+            return seconds_per_kernel
+
+        try:
+            with ThreadPoolExecutor() as ex:
+                th_opcount_per_kernel = ex.submit(self.get_opcount_per_kernel)
+                th_bytes_per_kernel = ex.submit(self.get_bytes_per_kernel)
+                th_seconds_per_kernel = ex.submit(wrap_get_latency_per_kernel)
+                opcount_per_kernel = th_opcount_per_kernel.result() 
+                bytes_per_kernel = th_bytes_per_kernel.result() 
+                seconds_per_kernel = th_seconds_per_kernel.result() 
             opcount_per_second = opcount_per_kernel / seconds_per_kernel
             opcount_per_byte = opcount_per_kernel / bytes_per_kernel
 
