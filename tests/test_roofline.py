@@ -125,7 +125,7 @@ def test__get_once_latency_per_kernel():
     prj_path = Path('tests/resource/example.prj')
     file_paths = roofline._get_hls_sources(prj_path)
     file_paths.extend(roofline._get_hls_rpts(prj_path))
-    got = roofline._get_once_latency_per_kernel(file_paths, '')
+    got = roofline._get_once_cycles_per_kernel(file_paths, '')
     assert isinstance(got[0], float), f'Expects type int, got {got}.'
     assert isinstance(got[1], str), f'Expects type str, got {got}.'
     if int(got[0]) != exp:
@@ -152,7 +152,7 @@ def test_get_latency_per_kernel():
     file_paths = roofline._get_hls_sources(prj_path)
     file_paths.extend(roofline._get_hls_rpts(prj_path))
     lat_range = roofline._get_latency_range(prj_path)
-    got = roofline.get_latency_per_kernel(file_paths, lat_range, tries=1)
+    got = roofline._get_cycles_per_kernel(file_paths, lat_range, tries=1)
     assert isinstance(got, float), f'Expects type float, got {got}.'
     if int(got) != exp:
         warning_str = 'Incorrect throughput estimate. '

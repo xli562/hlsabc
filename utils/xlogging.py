@@ -10,7 +10,11 @@ from loguru import logger
 DATA_FILE_PATH = 'logs/xdata.log'
 LOG_FILE_PATH = 'logs/xlogging.log'
 # Logging level above which the application will crash
+stdout_lavel = 'DEBUG'
+stderr_level = 'ERROR'
+logfile_level = 'DEBUG'
 CRASH_LEVEL = 'CRITICAL'
+
 FORCE_CRASH = False
 
 
@@ -30,9 +34,6 @@ def crash_application(message:Message):
 
 def get_logger():
     if os.getenv('is_logger_configured') != 'True':
-        stdout_lavel = 'DEBUG'
-        stderr_level = 'ERROR'
-        logfile_level = 'DEBUG'
         logger.remove()
         logger.add(sys.stdout,
                    level=stdout_lavel,

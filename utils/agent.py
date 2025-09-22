@@ -11,7 +11,7 @@ from utils.xlogging import logger
 
 load_dotenv()
 
-USE_GEMINI = True
+USE_GEMINI = False
 
 GPRO = 'gemini-2.5-pro' if USE_GEMINI else 'google/gemini-2.5-pro'
 GFLASH = 'gemini-2.5-flash' if USE_GEMINI else 'google/gemini-2.5-flash'
@@ -182,17 +182,24 @@ class Agent:
 
             # Parse response
             retstr = ''
+            
+            def log_fail_to_parse():
+                logger.error(f'Failed to parse this LLM response:')
+                try:
+                    corrupt_response = json.dumps(response.json(), indent=4)
+                except:
+                    corrupt_response = response.text
+                logger.error(corrupt_response)
+                
             try:
                 retstr:str = response.json()['choices'][0]['message']['content']
                 tok_count = response.json()['usage']['total_tokens']
                 self.accumulate_tok_count(tok_count)
             except Exception as e:
-                logger.error(f'Failed to parse this LLM response:')
-                logger.error(json.dumps(response.json(), indent=4))
+                log_fail_to_parse()
                 logger.error('Additional error message:')
                 logger.error(e)
             if not retstr:
-                logger.error('Failed to parse this LLM response:')
-                logger.error(json.dumps(response.json(), indent=4))
+                log_fail_to_parse()
 
         return retstr

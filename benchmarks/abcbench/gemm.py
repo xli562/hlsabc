@@ -42,6 +42,7 @@ def kernel_gemm[
 
 
 def gemm(concrete_type, p, r, q, variant:int, beta=0.1):
+    assert variant in range(0, 2**4), f'Got {variant}, expected within [0, 2**4).'
     sch0 = allo.customize(mm1, instantiate=[concrete_type, p, q, r])
     if (variant >> 0) & 1:
         sch0.reorder("k0", "j0")
@@ -75,6 +76,17 @@ def test_gemm(variant:int):
     beta = 0.1
     concrete_type = float32
     sch = gemm(concrete_type, P, R, Q, variant, beta=beta)
+    mod = sch.build()
+    # functional correctness test
+    A = np.random.rand(P, Q).astype(np.float32)
+    B = np.random.rand(Q, R).astype(np.float32)
+    C = np.random.rand(P, R).astype(np.float32)
+    output = np.zeros((P, R)).astype(np.float32)
+    output_ref = gemm_np(A, B, C, beta)
+    mod = sch.build()
+    mod(A, B, C, output)
+    np.testing.assert_allclose(output, output_ref, rtol=1e-5, atol=1e-5)
+    # Run roofline estimation
     rl = Roofline(sch)
     coords = rl.get_coords()
     log_data(f'{variant:<5} {coords[0]:<35} {coords[1]:<35}')

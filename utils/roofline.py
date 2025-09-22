@@ -16,12 +16,16 @@ class Roofline:
     def __init__(self, s:Schedule, input_dir:str|Path='input'):
         """ Initialization.
         
-        :param s: Allo hardware schedule"""
+        :param s: Allo hardware schedule.
+        :param input_dir: (optional) directory containing
+                file attachments to the LLM
+        """
         self.s = s
         self.file_input_dir = Path(input_dir)
         self.prj_name = 'none'
-        self.eval_model = Agent(GPRO)  # Does performance estimation
-        self.extract_model = Agent(GLITE)  # Extracts numbers from raw answers
+        self.eval_model = Agent(GPRO)       # Does performance estimation
+        # self.critic_model = Agent(GPRO)     # Critisizes `eval_model`
+        self.extract_model = Agent(GLITE)   # Extracts numbers from raw answers
         self.eval_model.system_prompt = \
 '''
 Style of your answer must be:
@@ -36,22 +40,22 @@ You are a tool that extracts machine-parsable values from a raw text. You *must*
 
     def _eval_extract(self, eval_prompt:str, extract_prompt:str,
                       output_convert, tries=3):
-        """ Runs self.eval_model, then self.extract_model. model.files are
-        automatically added to the prompts.
+        """ Runs `self.eval_model`, then `self.extract_model`. 
+                `model.files` are automatically added to the prompts.
         
-        :param eval_prompt: overwrites the user prompt for self.eval_model.
+        :param eval_prompt: overwrites the user prompt for `self.eval_model`.
         :param extract_prompt: overwrites the user prompt for 
-                self.extract_model.
+                `self.extract_model`.
         :param output_convert: callable that converts the output string.
-        :param tries: (optional) re-run count for self.extract_model before
+        :param tries: (optional) re-run count for `self.extract_model` before
                 failing.
 
-        :return: (output type of output_convert) the converted output, passed
-                through output_convert. None if conversion fails.
-        :return raw_output: raw output of self.eval_model
+        :return: tuple of 1) the converted output, passed
+                through output_convert. None if
+                conversion fails; 2) raw output of `self.eval_model`.
 
-        :raises warning: fails to produce answer that is convertible by
-                output_convert.
+        :raise warning: fails to produce answer that is convertible by
+                `output_convert`.
         """
         self.eval_model.user_prompt = eval_prompt
         raw_output = self.eval_model.generate()
@@ -191,7 +195,9 @@ The number of bytes of external memory access is needed. The total external memo
 
     def _run_csynth(self):
         """ Generates the Vivado HLS project directory.
-        May take ~1-5 minutes """
+        May take ~1-5 minutes.
+        
+        :return: 0 for success, 1 for failed. """
 
         try:
             tid = threading.get_ident()
@@ -200,9 +206,11 @@ The number of bytes of external memory access is needed. The total external memo
             logger.debug('Csynth starts.')
             mod()
             self.prj_name = prj_name
+            return 0
         except Exception as e:
             logger.error(e)
             shutil.rmtree(prj_name, ignore_errors=True)
+            return 1
 
     def _get_hls_sources(self, prj_path:Path|str) -> list[Path]:
         """ Returns list of paths of the source code files used for Vivado HLS.
@@ -219,33 +227,42 @@ The number of bytes of external memory access is needed. The total external memo
         return src_files
     
     def _get_hls_rpts(self, prj_path:Path|str):
-        """ Returns a list of paths of all *.rpt files.
+        """ Returns a list of paths of all `*.rpt` files.
 
         :param prj_path: path of the project directory.
 
-        :return: list of all *.rpt file paths in out.prj/solution1/syn/report.
+        :return: list of all `*.rpt` file paths in
+                `out.prj/solution1/syn/report`.
         """
         rpt_dir = Path(prj_path) / 'out.prj' / 'solution1' / 'syn' / 'report'
         rpt_files = [f for f in rpt_dir.glob('*.rpt')]
         return rpt_files
 
     def _get_clk_period(self, prj_path:Path|str):
-        """ Returns the target clock period [ns] of the design.
+        """ Returns the target clock period of the design in seconds.
         
         :param prj_path: path of the project directory.
         
-        :return: target clock period [ns] of the design.
+        :return: target clock period of the design in seconds.
         """
-        conversion_table = (('ns', 1.0),
-                            ('us', 1e3),
-                            ('ms', 1e6),
-                            ('fs', 1e-6),
-                            ('ps', 1e-3),
-                            ('s', 1e9))
+        conversion_table = (('fs', 1e-15),
+                            ('ps', 1e-12),
+                            ('ns', 1e-9),
+                            ('us', 1e-6),
+                            ('ms', 1e-3),
+                            ('s', 1.0))
         with (Path(prj_path) / 'report.json').open('r') as f:
             rpt = json.load(f)
-        clk_unit = str(rpt['UserAssignments']['unit'])
-        clk_period = float(rpt['UserAssignments']['TargetClockPeriod'])
+        try:
+            clk_unit = str(rpt['UserAssignments']['unit'])
+            clk_period = float(rpt['UserAssignments']['TargetClockPeriod'])
+        except Exception as e:
+            err_msg = 'Failed to parse HLS report for clock period.\n'
+            err_msg += f'Additional error message: {e}\n'
+            err_msg += f'Section in report.json:\n'
+            err_msg += f'{json.dumps(rpt['UserAssignments'], indent=4)}\n'
+            logger.error(err_msg)
+            return None
         coeff = 1.0
         for unit, unit_coeff in conversion_table:
             if clk_unit == unit:
@@ -259,17 +276,26 @@ The number of bytes of external memory access is needed. The total external memo
         :param prj_path: path of the project directory.
 
         :return: (min_latency, max_latency) of the design in clock cycle count.
+                Returns None if fails.
         """
         with (Path(prj_path) / 'report.json').open('r') as f:
             rpt = json.load(f)
         latency_estms = rpt['PerformanceEstimates']['SummaryOfOverallLatency']
-        min_latency = int(latency_estms['Interval-min'])
-        max_latency = int(latency_estms['Interval-max'])
+        try:
+            min_latency = int(latency_estms['Interval-min'])
+            max_latency = int(latency_estms['Interval-max'])
+        except Exception as e:
+            err_msg = 'Failed to parse HLS report for latency range.\n'
+            err_msg += f'Additional error message: {e}\n'
+            err_msg += f'Section in report.json:\n'
+            err_msg += f'{json.dumps(latency_estms, indent=4)}\n'
+            logger.error(err_msg)
+            return None
         return min_latency, max_latency
 
-    def _get_once_latency_per_kernel(self,
+    def _get_once_cycles_per_kernel(self,
                                      attach_paths:list[str|Path],
-                                     additional_prompt:str) -> float:
+                                     additional_prompt:str) -> tuple[float, str]:
         """ Return the estimated latency in cycles per kernel.
         
         :param attach_paths: list of paths that include all 
@@ -278,7 +304,8 @@ The number of bytes of external memory access is needed. The total external memo
         :param additional_prompt: prepended to the prompt, gives
                 additional information such as conversation history.
 
-        :return: estimated latency in cycles per kernel.
+        :return: tuple of 1) estimated latency in cycles per kernel, and
+                2) raw answer of self.eval_model
         """
         eval_prompt = additional_prompt
         eval_prompt += \
@@ -328,11 +355,11 @@ The latency in cycles per kernel is needed. In this specific case, the latency (
         return self._eval_extract(eval_prompt, extract_prompt,
                                   lambda x: float(x))
     
-    def get_latency_per_kernel(self, attach_paths:list[str|Path], 
+    def _get_cycles_per_kernel(self, attach_paths:list[str|Path], 
                                latency_range:tuple[int], tries=3,
-                               rtol=1e-2):
-        """ Gets the estimated latency per kernel, re-estimates if not in
-        (min_latency, max_latency) as in the csynth report.
+                               rtol=1e-2) -> float:
+        """ Gets the estimated latency in cycles per kernel, re-estimates if
+        not in (min_latency, max_latency) as in the csynth report.
         
         :param attach_paths: list of paths that include all 
                 attachments (source code files and csynth reports) to
@@ -342,6 +369,8 @@ The latency in cycles per kernel is needed. In this specific case, the latency (
         :param tries: (optional) number of attempts to re-estimate.
         :param rtol: (optional) does not re-estimate if estimated latency
                 is between [`intv_range[0]*(1-rtol)`, `intv_range[1]*(1+rtol)`]
+
+        :return: estimated latency in cycles per kernel.
         """
         assert (len(latency_range) == 2 and
                 latency_range[0] <= latency_range[1]), \
@@ -350,7 +379,7 @@ The latency in cycles per kernel is needed. In this specific case, the latency (
         additional_prompt = 'Conversation history (oldest first):'
         min_intv, max_intv = latency_range
         for _ in range(tries):
-            estm_lat, raw_ans = self._get_once_latency_per_kernel(attach_paths,
+            estm_lat, raw_ans = self._get_once_cycles_per_kernel(attach_paths,
                                                                   additional_prompt)
             if min_intv*(1-rtol) <= estm_lat <= max_intv*(1+rtol):
                 return estm_lat
@@ -359,6 +388,7 @@ The latency in cycles per kernel is needed. In this specific case, the latency (
                 debug_warning_msg += f'not between min_interval ({min_intv}) '
                 debug_warning_msg += f'and max_interval ({max_intv}).'
                 logger.debug(debug_warning_msg)
+                logger.debug('Trying again...')
                 additional_prompt += \
 f'''
 Large language model (latency estimator):
@@ -369,41 +399,59 @@ User:
 
 Are you sure? The HLS report has minimum interval {min_intv} and maximum interval {max_intv}. Your estimation, {estm_lat}, is not between these values. Try estimating the latency again.
 '''
-        logger.warning(debug_warning_msg)
+        logger.warning(f'{debug_warning_msg}. Proceeding to next step...')
         return estm_lat
 
-    def get_coords(self, tries=3):
+    def get_seconds_per_kernel(self, tries=3):
+        """ Gets latency in seconds per kernel. Runs csynth and LLM.
+         
+        :param tries: (optional) number of attempts to re-estimate.
+        """
+        # Run csynth if and only if no csynth dirs exist
+        if not Path(self.prj_name).is_dir():
+            csynth_exit_state = self._run_csynth()
+            if csynth_exit_state != 0:
+                logger.error('Csynth failed.')
+                return None
+        prj_path = Path(self.prj_name)
+        prj_files_paths = self._get_hls_sources(prj_path)
+        prj_files_paths.extend(self._get_hls_rpts(prj_path))
+        latency_range = self._get_latency_range(prj_path)
+        seconds_per_cycle = self._get_clk_period(prj_path)
+        if (latency_range is None) or (seconds_per_cycle is None):
+            return None
+        
+        cycles_per_kernel = self._get_cycles_per_kernel(prj_files_paths,
+                                                        latency_range,
+                                                        tries=tries)
+        seconds_per_kernel = cycles_per_kernel * seconds_per_cycle
+        return seconds_per_kernel
+
+    def get_coords(self):
         """ Gets the coordinates of self.s, for roofline modelling.
         
         :param tries: (optional) number of attempts to re-estimate throughput.
 
         :return: coordinates for roofline modelling. (Throughput, OI) =
                 (opcount_per_second, opcount_per_byte_external_mem_access).
+                Returns (0, 0) if error.
         """
-        def wrap_get_latency_per_kernel():
-            # Run csynth if and only if no csynth dirs exist
-            if not Path(self.prj_name).is_dir():
-                self._run_csynth()
-            prj_path = Path(self.prj_name)
-            prj_files_paths = self._get_hls_sources(prj_path)
-            prj_files_paths.extend(self._get_hls_rpts(prj_path))
-            latency_range = self._get_latency_range(prj_path)
-            seconds_per_kernel = self.get_latency_per_kernel(prj_files_paths,
-                                                             latency_range,
-                                                             tries=tries)
-            return seconds_per_kernel
-
         try:
             with ThreadPoolExecutor() as ex:
                 th_opcount_per_kernel = ex.submit(self.get_opcount_per_kernel)
                 th_bytes_per_kernel = ex.submit(self.get_bytes_per_kernel)
-                th_seconds_per_kernel = ex.submit(wrap_get_latency_per_kernel)
+                th_seconds_per_kernel = ex.submit(self.get_seconds_per_kernel)
                 opcount_per_kernel = th_opcount_per_kernel.result() 
                 bytes_per_kernel = th_bytes_per_kernel.result() 
-                seconds_per_kernel = th_seconds_per_kernel.result() 
+                seconds_per_kernel = th_seconds_per_kernel.result()
+            if seconds_per_kernel is None:
+                logger.error('Failed to get seconds_per_kernel')
+                return (0, 0)
             opcount_per_second = opcount_per_kernel / seconds_per_kernel
             opcount_per_byte = opcount_per_kernel / bytes_per_kernel
 
-            return opcount_per_second, opcount_per_byte
+            coords = (opcount_per_second, opcount_per_byte)
+            logger.debug(f'Coordinates generated: {coords}')
+            return coords
         finally:
             shutil.rmtree(self.prj_name, ignore_errors=True)
