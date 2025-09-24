@@ -4,33 +4,22 @@ import numpy as np
 import xml.etree.ElementTree as ET
 from tempfile import TemporaryDirectory
 from pathlib import Path
-from utils.agent import Agent, GPRO, GFLASH, GLITE
+from utils.llm import LLM, GPRO, GFLASH, GLITE
 from loguru import logger
 
 
 class PerfFB:
     """ Gives performance feedback based on ground truth and HLS report. """
 
-    # Modes of operation
-    PRECISION = 'p'
-    AREA = 'a'
-    THROUGHPUT = 't'
-    SUGGESTION = 's'
-
-    def __init__(self, input_dir:str|Path=None, 
-                 mode:tuple[str,...]=(PRECISION, AREA, THROUGHPUT, SUGGESTION)):
+    def __init__(self, input_dir:str|Path=None):
         """ Initializes module.
         
         :param input_dir: (Optional) path of the input directory, default None.
-        :param mode: (Optional) specifies which information to be
-                returned.
         """
-
         self.input_dir = Path(input_dir) if input_dir else None
-        self.mode = mode
     
     def set_hls_incl_dir(self, hls_incl_path:str|Path):
-        """ Provides path of HLS tool's include folder """
+        """ Provides path of HLS tool's include directory. """
 
         self.hls_incl_path = Path(hls_incl_path)
     
@@ -39,8 +28,8 @@ class PerfFB:
         
         :param c_args_lst: groups of arguments fed to the C program.
         
-        :return: returned floats from C """
-
+        :return: returned floats from C.
+        """
         with TemporaryDirectory() as tmp_dir:
             # Compile
             tmp_dir = Path(tmp_dir)
@@ -67,11 +56,11 @@ class PerfFB:
             return outs
     
     def _rmse(self, gt:dict, fut):
-        """ Returns RMSE relative to specified ground truth
+        """ Returns RMSE relative to specified ground truth.
         
         :param gt: ground truth
-        :param fut: a function with the same IO as self._run_c """
-
+        :param fut: a function with the same IO as self._run_c.
+        """
         args_lst = []
         exps_lst = []
         for args, exps in gt.items():
@@ -87,10 +76,12 @@ class PerfFB:
         return rmse
 
     def accuracy(self):
-        """ Returns RMSE of values produced the HLS source """
+        """ Returns RMSE of values produced the HLS source. """
 
-        # TODO: Should have another datapath for e.g. num_iters
-        #       for design-space exploration.
+        # TODO: 
+        # 1. Should have another datapath for e.g. num_iters
+        #    for design-space exploration.
+        # 2. Add testbench for this function. Alternatively, delete this function.
         with open(self.input_dir / 'ground_truth.json', 'r') as f:
             gt:dict = json.load(f)
         
@@ -100,8 +91,8 @@ class PerfFB:
         """ Parses the .xml HLS report for resource utilization.
         
         :return: Dictionary mapping resource name to utilization,
-                e.g., {'BRAM_18K':(0,280), 'LUT':(5214,53200), ...} """
-        
+                e.g., {'BRAM_18K':(0,280), 'LUT':(5214,53200), ...}.
+        """
         root = ET.parse(self.input_dir/'csynth.xml')
         area = root.find('AreaEstimates')
         usages = area.find('Resources')
@@ -121,9 +112,9 @@ class PerfFB:
         C/C++ source improvement suggestions using LLM.
         
         :param clk_period: (Optional) specifies clock 
-                period, eg '10ns' or '400 ns' """
-
-        self.agent = Agent(GPRO)
+                period, eg '10ns' or '400 ns'.
+        """
+        self.agent = LLM(GPRO)
 
         if clk_period is None:
             clk_period = 'as specified by the target clock period in the HLS report'
@@ -151,43 +142,7 @@ A C/C++ software (see attached files) is fed into Vitis HLS, and csynth report(s
 - For dataflow-optimized designs, if the intermediate values are vectors, the FIFOs between dataflow stages are implemented as dual-port BRAMs. Csynth reports over-optimistically estimate the dataflow latency as the max latency of all components. In reality, the dataflow pipeline is implemented as a PIPO that causes stalls. For large vectors, the dataflow optimization has trivial effects. For scalars, csynth gives the correct latency estimation for dataflow pipelines.
 - **Make sure maths and unit conversion are done correctly.**
 - The clock period is {clk_period}.
-
-## Job description
-
-Estimate the throughput for the synthesized hardware accelerator.
 '''
-
-#         self.agent.user_prompt = \
-# r'''
-# For this accelerator design in MLIR, answer the following questions.
-
-# 1. Identify *one* core operation in the core kernel. For example, addition or MAC. MAC can count as a core operation.
-# 2. How many times is this core operation performed?
-# 3. How many bytes of *external* memory access are there?
-
-# Hint: pay attention to the control flow, indicated by affine.for, affine.if, etc.
-
-# Count explicitly, without any "educated guesses".
-
-# Note size of the variables processed. For example, int32 is 32 bits, or 32/8=4 bytes.
-
-# Exhaustive list of data movement commands:
-# - affine.load
-# - affine.store
-# - memref.load
-# - memref.store
-
-# Note that some data movement are between on-chip buffers, these do not count as external memory access. Only count the ones that move data between the FPGA and the external memory.
-
-# For example, in example.mlir:
-
-# 1. The core operation is `arith.addi`
-# 2. The core operation is performed $8 \times 8 \times 3 \times 3 \times 1 = 576$ times.
-# 3. External memory access happens when the program performs any of the data movement commands on A or B.  That is $8 \times 8 \times (3 \times 3 \times (32 \div 8) + (32 \div 8)) = \pu{2560 bytes}$
-# '''
-        self.agent.user_prompt = 'What is the benchmark with the most complicated memory access pattern and data dependency?'
-        # self.agent.add_files([self.input_dir/'conv_rpt'])
-        self.agent.add_files(['/home/xl2296/allo/examples/polybench'])
+        self.agent.add_files([self.input_dir/'conv_rpt'])
 
         return self.agent.generate()
-

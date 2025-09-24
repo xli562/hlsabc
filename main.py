@@ -16,7 +16,7 @@ if __name__ == '__main__':
     for variant in tqdm(variants, position=0):
         for _ in range(1):
             start_time = time.time()
-            exit_state = two_mm.test_two_mm(variant)
+            exit_state = gemm.test_gemm(variant)
             if exit_state != 0:
                 break
             end_time = time.time()

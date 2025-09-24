@@ -9,7 +9,7 @@ import numpy as np
 from allo.ir.types import int32, float32
 import allo.ir.types as T
 from utils.xlogging import logger, log_data
-from utils.roofline import Roofline
+from utils.estimator import Estimator
 
 
 def two_mm_np(A, B, C, D, alpha, beta):
@@ -124,7 +124,7 @@ def test_two_mm(variant:int):
     output_ref = two_mm_np(A, B, C, D, 0.1, 0.5)
     np.testing.assert_allclose(output, output_ref, rtol=1e-5, atol=1e-5)
     # Run roofline estimation
-    rl = Roofline(sch)
+    rl = Estimator(sch)
     coords = rl.get_coords()
     log_data(f'{bin(variant):<5} {coords[0]:<35} {coords[1]:<35}')
     return -1 if coords == (0,0) else 0

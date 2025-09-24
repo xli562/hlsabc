@@ -11,25 +11,25 @@ from utils.xlogging import logger
 
 load_dotenv()
 
-USE_GEMINI = False
+USE_OPENROUTER_API = False
 
-GPRO = 'gemini-2.5-pro' if USE_GEMINI else 'google/gemini-2.5-pro'
-GFLASH = 'gemini-2.5-flash' if USE_GEMINI else 'google/gemini-2.5-flash'
-GLITE = 'gemini-2.5-flash-lite' if USE_GEMINI else 'google/gemini-2.5-flash-lite'
+GPRO = 'google/gemini-2.5-pro' if USE_OPENROUTER_API else 'gemini-2.5-pro'
+GFLASH = 'google/gemini-2.5-flash' if USE_OPENROUTER_API else 'gemini-2.5-flash'
+GLITE = 'google/gemini-2.5-flash-lite' if USE_OPENROUTER_API else 'gemini-2.5-flash-lite'
 
-class Agent:
-    """ LLM agent """
+class LLM:
+    """ The LLM interface. """
 
     def __init__(self, model:str, tok_budget=100_000):
         """ Initializes the agent.
-        
+
         :param model: name of model, eg 'google/gemini-2.5-flash'
         :param tok_budget: (Optional) max allowable tokens
                 used by a class instance. Logs warnings on high usage, disables
                 further prompting if usage exceeds budget.
         """
         self._model = model
-        if USE_GEMINI:
+        if not USE_OPENROUTER_API:
             self.client = genai.Client()
         self._tok_budget = tok_budget
         self._tok_used = 0
@@ -93,7 +93,7 @@ class Agent:
             if self._tok_used > self._tok_budget * level:
                 tier_percentage = int(level * 100)
                 curr_percentage = self._tok_used / self._tok_budget * 100
-                log_msg = f'Exceeded {tier_percentage} % token budget, currently {curr_percentage} %'
+                log_msg = f'Exceeded {tier_percentage} % token budget, currently {curr_percentage:.3f} %'
                 if log_level == 'INFO':
                     logger.info(log_msg)
                 elif log_level == 'WARN':
@@ -124,37 +124,19 @@ class Agent:
 
         :return: (str) response from LLM. Returns '' if token budget exceeded.
         """
+        if not isinstance(self.user_prompt, str):
+            raise TypeError(f'user_prompt of type {type(self.user_prompt)}: {self.user_prompt[:50]}')
+        if not isinstance(self.system_prompt, str):
+            raise TypeError(f'system_prompt of type {type(self.system_prompt)}: {self.system_prompt[:50]}')
+        
         if self._tok_used + 20 >= self._tok_budget:
             logger.warning(f'Exceeded token budget of {self._tok_budget}')
             return ''
-        
+
         # Append files
         user_prompt = self.get_prompt_with_files()
 
-        if USE_GEMINI:
-            api_key = os.getenv('GEMINI_API_KEY')
-            response = self.client.models.generate_content(
-                model=self._model,
-                contents=f'{self.system_prompt}\n\n\n{user_prompt}',
-                config=types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(
-                        thinking_budget=-1,
-                        include_thoughts=False
-                    )
-                )
-            )
-            retstr = ''
-            for part in response.candidates[0].content.parts:
-                if not part.text:
-                    continue
-                if part.thought:
-                    retstr += 'Thought summary:\n'
-                    retstr += '----------------\n'
-                    retstr += f'{part.text}\n'
-                    retstr += '----------------\n'
-                else:
-                    retstr += f'{part.text}\n'
-        else:
+        if USE_OPENROUTER_API:
             api_key = os.getenv('OPENROUTER_API_KEY')
         
             # Generate response
@@ -201,5 +183,29 @@ class Agent:
                 logger.error(e)
             if not retstr:
                 log_fail_to_parse()
+
+        else:
+            api_key = os.getenv('GEMINI_API_KEY')
+            response = self.client.models.generate_content(
+                model=self._model,
+                contents=f'{self.system_prompt}\n\n\n{user_prompt}',
+                config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(
+                        thinking_budget=-1,
+                        include_thoughts=False
+                    )
+                )
+            )
+            retstr = ''
+            for part in response.candidates[0].content.parts:
+                if not part.text:
+                    continue
+                if part.thought:
+                    retstr += 'Thought summary:\n'
+                    retstr += '----------------\n'
+                    retstr += f'{part.text}\n'
+                    retstr += '----------------\n'
+                else:
+                    retstr += f'{part.text}\n'
 
         return retstr

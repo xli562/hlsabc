@@ -1,10 +1,15 @@
 #!/bin/bash
+# Runs pytest and logs to pytest.log.
 
 logfile=./logs/pytest.log
 timestamp="$(date '+%Y-%m-%d %H:%M:%S') ============================================================"
 echo -e "\n\n$timestamp" >> "$logfile"
-echo "===== PARALLEL TESTS ====="
-pytest | tee -a >(sed -r "s/\x1B\[[0-9;]*[mK]//g" >> "$logfile")
-# pytest -n auto -m "not serial" | tee -a >(sed -r "s/\x1B\[[0-9;]*[mK]//g" >> "$logfile")
-# echo; echo; echo "===== SERIAL TESTS ====="
-# pytest -n 1 -m "serial" | tee -a >(sed -r "s/\x1B\[[0-9;]*[mK]//g" >> "$logfile")
+
+if [[ "${1:-}" == "--parallel" ]]; then
+  echo "===== PARALLEL TESTS ====="
+  pytest -n auto -m "not serial" | tee -a >(sed -r "s/\x1B\[[0-9;]*[mK]//g" >> "$logfile")
+  echo; echo; echo "===== SERIAL TESTS ====="
+  pytest -n 1 -m "serial" | tee -a >(sed -r "s/\x1B\[[0-9;]*[mK]//g" >> "$logfile")
+else
+  pytest | tee -a >(sed -r "s/\x1B\[[0-9;]*[mK]//g" >> "$logfile")
+fi

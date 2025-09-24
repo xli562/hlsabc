@@ -9,7 +9,7 @@ import numpy as np
 from allo.ir.types import int32, float32, index
 import allo.ir.types as T
 
-from utils.roofline import Roofline
+from utils.estimator import Estimator
 from utils.xlogging import logger, log_data
 
 
@@ -107,7 +107,7 @@ def test_nussinov(variant):
     mod(seq, table)
     np.testing.assert_allclose(table, table_ref, rtol=1e-5)
     # Run roofline estimation
-    rl = Roofline(sch)
+    rl = Estimator(sch)
     coords = rl.get_coords()
     log_data(f'{variant:<5} {coords[0]:<35} {coords[1]:<35}')
 
