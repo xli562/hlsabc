@@ -10,7 +10,7 @@ def test_simple():
 def test_run_c():
     """ Tests running cordic """
 
-    perf_fb = PerfFB('input')
+    perf_fb = PerfFB('tests/resource/test_run_c')
     perf_fb.set_hls_incl_dir('/opt/xilinx/Vivado/2019.2/include')
 
     got = perf_fb._run_c([[np.pi/3, 20]])

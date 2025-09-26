@@ -3,8 +3,7 @@
 **pytest_cache**
 
 # File input
-input
-tests/resource
+input/
 
 # Scratch directory
 scratch

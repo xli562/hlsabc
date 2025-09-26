@@ -1,0 +1,238 @@
+{
+  "ReportVersion": {
+    "Version": "2019.2"
+  },
+  "UserAssignments": {
+    "unit": "ns",
+    "ProductFamily": "virtexuplus",
+    "Part": "xcu280-fsvh2892-2L-e",
+    "TopModelName": "conv2D_lb_wb_schedule",
+    "TargetClockPeriod": "3.33",
+    "ClockUncertainty": "0.42"
+  },
+  "PerformanceEstimates": {
+    "PipelineType": "none",
+    "SummaryOfTimingAnalysis": {
+      "unit": "ns",
+      "EstimatedClockPeriod": "1.975"
+    },
+    "SummaryOfOverallLatency": {
+      "unit": "clock cycles",
+      "Best-caseLatency": "1794",
+      "Average-caseLatency": "1794",
+      "Worst-caseLatency": "1794",
+      "Best-caseRealTimeLatency": "5.974 us",
+      "Average-caseRealTimeLatency": "5.974 us",
+      "Worst-caseRealTimeLatency": "5.974 us",
+      "Interval-min": "1795",
+      "Interval-max": "1795"
+    },
+    "SummaryOfLoopLatency": {
+      "Loop1": {
+        "TripCount": "8",
+        "Latency": "112",
+        "IterationLatency": "14",
+        "Loop1.1": {
+          "TripCount": "2",
+          "Latency": "12",
+          "IterationLatency": "6",
+          "Loop1.1.1": {
+            "TripCount": "4",
+            "Latency": "4",
+            "IterationLatency": "1"
+          }
+        }
+      },
+      "l_S_y_x_0_y": {
+        "TripCount": "8",
+        "Latency": "1680",
+        "IterationLatency": "210",
+        "l_x": {
+          "TripCount": "8",
+          "Latency": "208",
+          "IterationLatency": "26",
+          "l_S_r_c_0_r": {
+            "TripCount": "3",
+            "Latency": "24",
+            "IterationLatency": "8",
+            "l_c": {
+              "TripCount": "3",
+              "Latency": "6",
+              "IterationLatency": "2"
+            }
+          }
+        }
+      }
+    }
+  },
+  "AreaEstimates": {
+    "Resources": {
+      "FF": "129",
+      "LUT": "330",
+      "BRAM_18K": "0",
+      "DSP48E": "0",
+      "URAM": "0"
+    },
+    "AvailableResources": {
+      "BRAM_18K": "4032",
+      "DSP48E": "9024",
+      "FF": "2607360",
+      "LUT": "1303680",
+      "URAM": "960"
+    }
+  },
+  "InterfaceSummary": {
+    "RtlPorts": [
+      {
+        "name": "ap_clk",
+        "Object": "conv2D_lb_wb_schedule",
+        "Type": "return value",
+        "Scope": null,
+        "IOProtocol": "ap_ctrl_hs",
+        "IOConfig": null,
+        "Dir": "in",
+        "Bits": "1",
+        "Attribute": "control"
+      },
+      {
+        "name": "ap_rst",
+        "Object": "conv2D_lb_wb_schedule",
+        "Type": "return value",
+        "Scope": null,
+        "IOProtocol": "ap_ctrl_hs",
+        "IOConfig": null,
+        "Dir": "in",
+        "Bits": "1",
+        "Attribute": "control"
+      },
+      {
+        "name": "ap_start",
+        "Object": "conv2D_lb_wb_schedule",
+        "Type": "return value",
+        "Scope": null,
+        "IOProtocol": "ap_ctrl_hs",
+        "IOConfig": null,
+        "Dir": "in",
+        "Bits": "1",
+        "Attribute": "control"
+      },
+      {
+        "name": "ap_done",
+        "Object": "conv2D_lb_wb_schedule",
+        "Type": "return value",
+        "Scope": null,
+        "IOProtocol": "ap_ctrl_hs",
+        "IOConfig": null,
+        "Dir": "out",
+        "Bits": "1",
+        "Attribute": "control"
+      },
+      {
+        "name": "ap_idle",
+        "Object": "conv2D_lb_wb_schedule",
+        "Type": "return value",
+        "Scope": null,
+        "IOProtocol": "ap_ctrl_hs",
+        "IOConfig": null,
+        "Dir": "out",
+        "Bits": "1",
+        "Attribute": "control"
+      },
+      {
+        "name": "ap_ready",
+        "Object": "conv2D_lb_wb_schedule",
+        "Type": "return value",
+        "Scope": null,
+        "IOProtocol": "ap_ctrl_hs",
+        "IOConfig": null,
+        "Dir": "out",
+        "Bits": "1",
+        "Attribute": "control"
+      },
+      {
+        "name": "v0_address0",
+        "Object": "v0",
+        "Type": "array",
+        "Scope": null,
+        "IOProtocol": "ap_memory",
+        "IOConfig": null,
+        "Dir": "out",
+        "Bits": "7",
+        "Attribute": "address",
+        "CType": "int"
+      },
+      {
+        "name": "v0_ce0",
+        "Object": "v0",
+        "Type": "array",
+        "Scope": null,
+        "IOProtocol": "ap_memory",
+        "IOConfig": null,
+        "Dir": "out",
+        "Bits": "1",
+        "Attribute": "control",
+        "CType": "int"
+      },
+      {
+        "name": "v0_q0",
+        "Object": "v0",
+        "Type": "array",
+        "Scope": null,
+        "IOProtocol": "ap_memory",
+        "IOConfig": null,
+        "Dir": "in",
+        "Bits": "32",
+        "Attribute": "data",
+        "CType": "int"
+      },
+      {
+        "name": "v1_address0",
+        "Object": "v1",
+        "Type": "array",
+        "Scope": null,
+        "IOProtocol": "ap_memory",
+        "IOConfig": null,
+        "Dir": "out",
+        "Bits": "6",
+        "Attribute": "address",
+        "CType": "int"
+      },
+      {
+        "name": "v1_ce0",
+        "Object": "v1",
+        "Type": "array",
+        "Scope": null,
+        "IOProtocol": "ap_memory",
+        "IOConfig": null,
+        "Dir": "out",
+        "Bits": "1",
+        "Attribute": "control",
+        "CType": "int"
+      },
+      {
+        "name": "v1_we0",
+        "Object": "v1",
+        "Type": "array",
+        "Scope": null,
+        "IOProtocol": "ap_memory",
+        "IOConfig": null,
+        "Dir": "out",
+        "Bits": "1",
+        "Attribute": "control",
+        "CType": "int"
+      },
+      {
+        "name": "v1_d0",
+        "Object": "v1",
+        "Type": "array",
+        "Scope": null,
+        "IOProtocol": "ap_memory",
+        "IOConfig": null,
+        "Dir": "out",
+        "Bits": "32",
+        "Attribute": "data",
+        "CType": "int"
+      }
+    ]
+  }
+}

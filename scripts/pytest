@@ -2,6 +2,8 @@
 # Runs pytest and logs to pytest.log.
 
 logfile=./logs/pytest.log
+mkdir -p "$(dirname "$logfile")"
+touch "$logfile"
 timestamp="$(date '+%Y-%m-%d %H:%M:%S') ============================================================"
 echo -e "\n\n$timestamp" >> "$logfile"
 

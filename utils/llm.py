@@ -29,7 +29,12 @@ class LLM:
                 further prompting if usage exceeds budget.
         """
         self._model = model
-        if not USE_OPENROUTER_API:
+        if USE_OPENROUTER_API:
+            if os.getenv('OPENROUTER_API_KEY') is None:
+                raise KeyError('OPENROUTER_API_KEY not found in .env')
+        else:
+            if os.getenv('GEMINI_API_KEY') is None:
+                raise KeyError('GEMINI_API_KEY not found in .env')
             self.client = genai.Client()
         self._tok_budget = tok_budget
         self._tok_used = 0
